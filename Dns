@@ -1,0 +1,65 @@
+-- Server: safe auto-cash example (awards 300 per tick)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local toggleEvent = ReplicatedStorage:WaitForChild("ToggleAutoCash")
+
+-- How much cash to give each tick (now 300)
+local CASH_PER_TICK = 300
+local TICK_INTERVAL = 0.25 -- seconds (task.wait interval)
+
+-- Setup leaderstats for each player
+Players.PlayerAdded:Connect(function(player)
+    local leaderstats = Instance.new("Folder")
+    leaderstats.Name = "leaderstats"
+    leaderstats.Parent = player
+
+    local cash = Instance.new("IntValue")
+    cash.Name = "Cash"
+    cash.Value = 0
+    cash.Parent = leaderstats
+
+    player:SetAttribute("AutoCashEnabled", false)
+end)
+
+-- track active loops so we don't start duplicates
+local activeTasks = {}
+
+local function startAutoCash(player)
+    if activeTasks[player] then return end
+    player:SetAttribute("AutoCashEnabled", true)
+
+    -- spawn a separate task for this player's auto-cash
+    local t = task.spawn(function()
+        while player and player.Parent and player:GetAttribute("AutoCashEnabled") do
+            local leaderstats = player:FindFirstChild("leaderstats")
+            local cash = leaderstats and leaderstats:FindFirstChild("Cash")
+            if cash then
+                cash.Value = cash.Value + CASH_PER_TICK
+            end
+            task.wait(TICK_INTERVAL)
+        end
+        activeTasks[player] = nil
+    end)
+
+    activeTasks[player] = t
+end
+
+local function stopAutoCash(player)
+    player:SetAttribute("AutoCashEnabled", false)
+    activeTasks[player] = nil
+end
+
+-- RemoteEvent handler (basic validation)
+toggleEvent.OnServerEvent:Connect(function(player, enable)
+    if type(enable) ~= "boolean" then return end
+    if enable then
+        startAutoCash(player)
+    else
+        stopAutoCash(player)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    activeTasks[player] = nil
+end)
